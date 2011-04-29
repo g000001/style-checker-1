@@ -7,14 +7,14 @@
   スタイルチェッカーを全削除
 - put-style-checker
   スタイルチェッカーを登録(関数単位で登録)
-#+begin_src lisp
+#+BEGIN_SRC lisp
 (put-style-checker 'cl:let
                    'lint
                    (lambda (form)
                      (let ((mesg (lint::check-varlist (second form))))
                        (when mesg
                          (sb-c::compiler-style-warn mesg)))))
-#+end_src
+#+END_SRC
 - remove-style-checker
   スタイルチェッカーを登録(関数単位で削除)
 - call-style-checkers
@@ -32,26 +32,26 @@ wrong. checker-name is the name of your style checker function, and symbol is th
 symbol that you want to check. arg1 and arg2 are optional arguments to your style
 checker function.
 You define a style checker as follows:
-#+begin_src lisp
+#+BEGIN_SRC lisp
 (defun (compiler:style-checker style-checker-name function-symbol) (form)
   body-that-looks-at-the-form...
   )
-#+end_src
+#+END_SRC
 You can have multiple style checkers on a single function symbol. For example, as-
 sume that you define function to take a first argument that must be a number,
 and which is often a constant.
-#+begin_src lisp
+#+BEGIN_SRC lisp
 (defun stylish-function (number &rest other-args)
   )
-#+end_src
+#+END_SRC
 You might write:
-#+begin_src lisp
+#+BEGIN_SRC lisp
 (defun (compiler:style-checker first-arg-must-be-numeric stylish-function) (form)
   (destructuring-bind (ignore number &rest ignore) form
     (when (and (compiler:constant-form-p number)
                (not (numberp (compiler:constant-evaluator number))))
       (warn "The first argument ~S to ~S is not a number." number ’stylish-function))))
-#+end_src
+#+END_SRC
 In the example, the function compiler:constant-form-p simply checks if the form
 is treated as a constant by the compiler; the function compiler:constant-evaluator
 returns the value of a constant. You have to be very careful about how you exam-
@@ -67,24 +67,24 @@ checker property on a symbol; the value of the property is called on all forms
 whose car is that symbol, except those immediately enclosed in inhibit-style-
 warnings. Obsolete function warnings are also performed by means of the style-
 checking mechanism.
-#+begin_src lisp
+#+BEGIN_SRC lisp
 inhibit-style-warnings form Function
-#+end_src
+#+END_SRC
 Prevents the compiler from performing style-checking on the top level of form;
 style-checking will still be done on the arguments of form.
 The following code warns you about the obsolete function zl:explode, since inhibit-
 style-warnings applies only to the top level of the form inside it, in this case, to
 the setq.
 Generate warning:
-#+begin_src lisp
+#+BEGIN_SRC lisp
 (inhibit-style-warnings (setq bar (explode foo)))
-#+end_src
+#+END_SRC
 The following code, on the other hand, does not warn that explode is an obsolete
 function:
 Do not generate warning:
-#+begin_src lisp
+#+BEGIN_SRC lisp
 (setq bar (inhibit-style-warnings (explode foo)))
-#+end_src
+#+END_SRC
 If an optimizer needs to return a form with nested "bad-style" forms, there should
 be an explicit inhibit-style-warnings wrapped around the nested forms.
 By setting the compile-time value of inhibit-style-warning-switch you can enable
