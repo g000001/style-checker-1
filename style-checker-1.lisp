@@ -111,4 +111,48 @@
                                         (call-style-checkers 'foo () ))
                                       'list))))))
 
+(defun clear-style-checker-suite (sym checker-name)
+  (let ((checkers (gethash sym *style-checkers*)))
+    (when checkers
+      (let ((suite (gethash checker-name checkers)))
+        (when suite
+          (clrhash suite))))))
+
+(test clear-style-checker-suite
+  (flet ((setup ()
+           (clear-style-checkers)
+           (put-style-checker 'foo 'a (lambda (form)
+                                        (declare (ignore form))
+                                        (format *error-output* "A")))
+           (put-style-checker 'foo 'b (lambda (form)
+                                        (declare (ignore form))
+                                        (format *error-output* "B")))
+           (put-style-checker 'foo 'c (lambda (form)
+                                        (declare (ignore form))
+                                        (format *error-output* "C")))
+           (put-style-checker 'foo 'd (lambda (form)
+                                        (declare (ignore form))
+                                        (format *error-output* "D")))
+           (put-style-checker 'foo 'e (lambda (form)
+                                        (declare (ignore form))
+                                        (format *error-output* "E")))
+           (put-style-checker 'bar 'a (lambda (form)
+                                        (declare (ignore form))
+                                        (format *error-output* "Z")))))
+    (setup))
+  ;;
+  (is-true (null (set-difference (coerce "ABCED" 'list)
+                                 (coerce (with-output-to-string (*error-output*)
+                                           (call-style-checkers 'foo () ))
+                                         'list))))
+  ;;
+  (is-true (progn
+             (clear-style-checker-suite 'foo 'foo)
+             (null (call-style-checkers 'foo () ))))
+  ;;
+  (is-true (null (set-difference (coerce "Z" 'list)
+                                 (coerce (with-output-to-string (*error-output*)
+                                           (call-style-checkers 'bar () ))
+                                    'list)))))
+
 ;; eof
