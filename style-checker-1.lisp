@@ -158,7 +158,6 @@
                                             (when (eq k 'a)
                                               (funcall v :ignore)))
                                           v))
-                               *style-checkers*))
-                    'list)))
+                               *style-checkers*)))))
 
 ;; eof
