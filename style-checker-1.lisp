@@ -10,7 +10,7 @@
   ;; [sym => [checker-name => fctn] ...]
   (make-hash-table))
 
-(defun clear-style-checkers ()
+(defun clear-all-style-checkers ()
   (clrhash *style-checkers*))
 
 (test clear-style-checkers
@@ -111,12 +111,15 @@
                                         (call-style-checkers 'foo () ))
                                       'list))))))
 
-(defun clear-style-checker-suite (sym checker-name)
-  (let ((checkers (gethash sym *style-checkers*)))
-    (when checkers
-      (let ((suite (gethash checker-name checkers)))
-        (when suite
-          (clrhash checkers))))))
+(defun clear-style-checker-suite (checker-name)
+  (maphash (lambda (k tab)
+             (declare (ignore k))
+             (maphash (lambda (k v)
+                        (declare (ignore v))
+                        (when (eq checker-name k)
+                          (remhash k tab)))
+                      tab))
+           *style-checkers*))
 
 (test clear-style-checker-suite
   (flet ((setup ()
@@ -124,44 +127,38 @@
            (put-style-checker 'foo 'a (lambda (form)
                                         (declare (ignore form))
                                         (format *error-output* "A")))
-           (put-style-checker 'foo 'b (lambda (form)
-                                        (declare (ignore form))
-                                        (format *error-output* "B")))
-           (put-style-checker 'foo 'c (lambda (form)
-                                        (declare (ignore form))
-                                        (format *error-output* "C")))
-           (put-style-checker 'foo 'd (lambda (form)
-                                        (declare (ignore form))
-                                        (format *error-output* "D")))
-           (put-style-checker 'foo 'e (lambda (form)
-                                        (declare (ignore form))
-                                        (format *error-output* "E")))
            (put-style-checker 'bar 'a (lambda (form)
                                         (declare (ignore form))
-                                        (format *error-output* "Z")))))
-    (setup))
-  ;;
-  (is-true (null (set-difference (coerce "ABCED" 'list)
-                                 (coerce (with-output-to-string (*error-output*)
-                                           (call-style-checkers 'foo () ))
-                                         'list))))
-  ;;
-  (is-true (progn
-             (clear-style-checker-suite 'foo 'foo)
-             (null (call-style-checkers 'foo () ))))
-  ;;
-  (is-true (null (set-difference (coerce "Z" 'list)
-                                 (coerce (with-output-to-string (*error-output*)
-                                           (call-style-checkers 'bar () ))
-                                    'list))))
-  (flet ((setup ()
-           (clear-style-checkers)
-           (put-style-checker 'foo 'a (lambda (form)
+                                        (format *error-output* "B")))
+           (put-style-checker 'baz 'a (lambda (form)
                                         (declare (ignore form))
-                                        (format *error-output* "A")))
-           (dotimes (i 100)
-             (clear-style-checker-suite 'foo 'a))))
+                                        (format *error-output* "C")))
+           (put-style-checker 'quux 'a (lambda (form)
+                                         (declare (ignore form))
+                                         (format *error-output* "D")))))
     (setup))
-  (is-true (null (clear-style-checker-suite 'foo 'a))))
+  ;;
+  (is-true (null (set-difference (coerce "ABCD" 'list)
+                                 (coerce (with-output-to-string (*error-output*)
+                                           (maphash (lambda (k v)
+                                                      (declare (ignore k))
+                                                      (maphash (lambda (k v)
+                                                                 (when (eq k 'a)
+                                                                   (funcall v :ignore)))
+                                                               v))
+                                                    *style-checkers*))
+                                         'list))))
+  ;; clear!
+  (clear-style-checker-suite 'a)
+  (is-true (string= ""
+                    (with-output-to-string (*error-output*)
+                      (maphash (lambda (k v)
+                                 (declare (ignore k))
+                                 (maphash (lambda (k v)
+                                            (when (eq k 'a)
+                                              (funcall v :ignore)))
+                                          v))
+                               *style-checkers*))
+                    'list)))
 
 ;; eof
