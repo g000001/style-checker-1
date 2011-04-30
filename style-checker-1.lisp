@@ -116,7 +116,7 @@
     (when checkers
       (let ((suite (gethash checker-name checkers)))
         (when suite
-          (clrhash suite))))))
+          (clrhash checkers))))))
 
 (test clear-style-checker-suite
   (flet ((setup ()
@@ -153,6 +153,15 @@
   (is-true (null (set-difference (coerce "Z" 'list)
                                  (coerce (with-output-to-string (*error-output*)
                                            (call-style-checkers 'bar () ))
-                                    'list)))))
+                                    'list))))
+  (flet ((setup ()
+           (clear-style-checkers)
+           (put-style-checker 'foo 'a (lambda (form)
+                                        (declare (ignore form))
+                                        (format *error-output* "A")))
+           (dotimes (i 100)
+             (clear-style-checker-suite 'foo 'a))))
+    (setup))
+  (is-true (null (clear-style-checker-suite 'foo 'a))))
 
 ;; eof
