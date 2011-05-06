@@ -1,46 +1,68 @@
 (in-package :sb-c)
 
+(declaim (ftype (sfunction (ctran ctran (or lvar null) t) (values))
+                ir1-convert))
 (sb-ext:without-package-locks
-  (defmacro def-ir1-translator (name (lambda-list start-var next-var result-var)
-                                &body body)
-    (let ((fn-name (symbolicate "IR1-CONVERT-" name))
-          (guard-name (symbolicate name "-GUARD")))
-      (with-unique-names (whole-var n-env)
-        (multiple-value-bind (body decls doc)
-                             (parse-defmacro lambda-list whole-var body name "special form"
-                                             :environment n-env
-                                             :error-fun 'compiler-error
-                                             :wrap-block nil)
-          `(progn
-             (declaim (ftype (function (ctran ctran (or lvar null) t) (values))
-                             ,fn-name))
-             (defun ,fn-name (,start-var ,next-var ,result-var ,whole-var
-                                         &aux (,n-env *lexenv*))
-               (declare (ignorable ,start-var ,next-var ,result-var))
-               ,@decls
-               (style-checker-1:call-style-checkers ',name ,whole-var)
-               ,body
-               (values))
-             #-sb-xc-host
-             ;; It's nice to do this for error checking in the target
-             ;; SBCL, but it's not nice to do this when we're running in
-             ;; the cross-compilation host Lisp, which owns the
-             ;; SYMBOL-FUNCTION of its COMMON-LISP symbols. These guard
-             ;; functions also provide the documentation for special forms.
-             (progn
-               (defun ,guard-name (&rest args)
-                 ,@(when doc (list doc))
-                 (declare (ignore args))
-                 (error 'special-form-function :name ',name))
-               (let ((fun #',guard-name))
-                 (setf (%simple-fun-arglist fun) ',lambda-list
-                       (%simple-fun-name fun) ',name
-                       (symbol-function ',name) fun)
-                 (fmakunbound ',guard-name)))
-             ;; FIXME: Evidently "there can only be one!" -- we overwrite any
-             ;; other :IR1-CONVERT value. This deserves a warning, I think.
-             (setf (info :function :ir1-convert ',name) #',fn-name)
-             ;; FIXME: rename this to SPECIAL-OPERATOR, to update it to
-             ;; the 1990s?
-             (setf (info :function :kind ',name) :special-form)
-             ',name))))))
+;;;; IR1-CONVERT, macroexpansion and special form dispatching
+  (macrolet (;; Bind *COMPILER-ERROR-BAILOUT* to a function that throws
+             ;; out of the body and converts a condition signalling form
+             ;; instead. The source form is converted to a string since it
+             ;; may contain arbitrary non-externalizable objects.
+             (ir1-error-bailout ((start next result form) &body body)
+               (with-unique-names (skip condition)
+                 `(block ,skip
+                    (let ((,condition (catch 'ir1-error-abort
+                                        (let ((*compiler-error-bailout*
+                                               (lambda (&optional e)
+                                                 (throw 'ir1-error-abort e))))
+                                          ,@body
+                                          (return-from ,skip nil)))))
+                      (ir1-convert ,start ,next ,result
+                                   (make-compiler-error-form ,condition
+                                                             ,form)))))))
+
+    ;; Translate FORM into IR1. The code is inserted as the NEXT of the
+    ;; CTRAN START. RESULT is the LVAR which receives the value of the
+    ;; FORM to be translated. The translators call this function
+    ;; recursively to translate their subnodes.
+    ;;
+    ;; As a special hack to make life easier in the compiler, a LEAF
+    ;; IR1-converts into a reference to that LEAF structure. This allows
+    ;; the creation using backquote of forms that contain leaf
+    ;; references, without having to introduce dummy names into the
+    ;; namespace.
+    (defun ir1-convert (start next result form)
+      (ignore-errors
+        (style-checker-1:call-style-checkers (car form) form))
+      (ir1-error-bailout (start next result form)
+                         (let* ((*current-path* (or (get-source-path form)
+                                                    (cons (simplify-source-path-form form)
+                                                          *current-path*)))
+                                (start (instrument-coverage start nil form)))
+                           (cond ((atom form)
+                                  (cond ((and (symbolp form) (not (keywordp form)))
+                                         (ir1-convert-var start next result form))
+                                        ((leaf-p form)
+                                         (reference-leaf start next result form))
+                                        (t
+                                         (reference-constant start next result form))))
+                                 (t
+                                  (ir1-convert-functoid start next result form)))))
+      (values))
+
+    ;; Generate a reference to a manifest constant, creating a new leaf
+    ;; if necessary.
+    (defun reference-constant (start next result value)
+      (declare (type ctran start next)
+               (type (or lvar null) result))
+      (ir1-error-bailout (start next result value)
+                         (let* ((leaf (find-constant value))
+                                (res (make-ref leaf)))
+                           (push res (leaf-refs leaf))
+                           (link-node-to-previous-ctran res start)
+                           (use-continuation res next result)))
+      (values))) )
+
+
+
+
